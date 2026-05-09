@@ -23,7 +23,7 @@ import com.latergator.app.ui.theme.shouldUseDark
 import kotlinx.coroutines.delay
 import java.util.Calendar
 
-private enum class Screen { MAIN, SETTINGS }
+private enum class Screen { MAIN, SETTINGS, HISTORY }
 
 class MainActivity : ComponentActivity() {
 
@@ -52,7 +52,6 @@ class MainActivity : ComponentActivity() {
             val settings by settingsVm.settings.collectAsState()
             val isSystemDark = isSystemInDarkTheme()
 
-            // Minutenticker für SCHEDULED-Dark-Mode
             var currentMinuteOfDay by remember { mutableIntStateOf(minuteOfDay()) }
             LaunchedEffect(Unit) {
                 while (true) {
@@ -71,10 +70,15 @@ class MainActivity : ComponentActivity() {
                         Screen.MAIN -> MainScreen(
                             viewModel = reminderVm,
                             onNavigateToSettings = { currentScreen = Screen.SETTINGS },
+                            onNavigateToHistory = { currentScreen = Screen.HISTORY },
                             modifier = Modifier.padding(innerPadding)
                         )
                         Screen.SETTINGS -> SettingsScreen(
                             viewModel = settingsVm,
+                            onBack = { currentScreen = Screen.MAIN }
+                        )
+                        Screen.HISTORY -> HistoryScreen(
+                            viewModel = reminderVm,
                             onBack = { currentScreen = Screen.MAIN }
                         )
                     }

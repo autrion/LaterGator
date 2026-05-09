@@ -22,4 +22,7 @@ interface ReminderDao {
 
     @Query("SELECT * FROM reminders WHERE id = :id")
     suspend fun getById(id: Int): Reminder?
+
+    @Query("SELECT * FROM reminders WHERE status != 'PENDING' ORDER BY snoozeTargetTime DESC LIMIT 200")
+    fun getHistoryReminders(): Flow<List<Reminder>>
 }

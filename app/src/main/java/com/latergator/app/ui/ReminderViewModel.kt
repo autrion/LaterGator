@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.latergator.app.data.*
 import com.latergator.app.notification.NotificationHelper
+import com.latergator.app.widget.LaterGatorWidget
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -20,6 +21,9 @@ class ReminderViewModel(
     val pendingReminders: StateFlow<List<Reminder>> = repository.getPendingReminders()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val historyReminders: StateFlow<List<Reminder>> = repository.getHistoryReminders()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     private val settings: StateFlow<AppSettings> = settingsRepository.settingsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
 
@@ -27,17 +31,27 @@ class ReminderViewModel(
         if (description.isBlank()) return
         viewModelScope.launch {
             val adjusted = applyQuietHours(snoozeTargetTime, settings.value)
-            val id = repository.insert(Reminder(description = description.trim(), snoozeTargetTime = adjusted))
+            val trimmed = description.trim()
+            val id = repository.insert(
+                Reminder(description = trimmed, snoozeTargetTime = adjusted,
+                         placeType = PlaceTypeDetector.detect(trimmed))
+            )
             NotificationHelper.scheduleReminder(getApplication(), id, adjusted)
+            LaterGatorWidget.requestUpdate(getApplication())
         }
     }
 
     fun updateReminder(reminder: Reminder, newDescription: String, newTime: Long) {
         viewModelScope.launch {
             val adjusted = applyQuietHours(newTime, settings.value)
-            repository.update(reminder.copy(description = newDescription.trim(), snoozeTargetTime = adjusted))
+            val trimmed = newDescription.trim()
+            repository.update(
+                reminder.copy(description = trimmed, snoozeTargetTime = adjusted,
+                              placeType = PlaceTypeDetector.detect(trimmed))
+            )
             NotificationHelper.cancelReminder(getApplication(), reminder.id.toLong())
             NotificationHelper.scheduleReminder(getApplication(), reminder.id.toLong(), adjusted)
+            LaterGatorWidget.requestUpdate(getApplication())
         }
     }
 
@@ -45,6 +59,7 @@ class ReminderViewModel(
         viewModelScope.launch {
             repository.updateStatus(reminder.id, ReminderStatus.COMPLETED)
             NotificationHelper.cancelReminder(getApplication(), reminder.id.toLong())
+            LaterGatorWidget.requestUpdate(getApplication())
         }
     }
 
@@ -54,6 +69,7 @@ class ReminderViewModel(
             repository.update(reminder.copy(snoozeTargetTime = adjusted))
             NotificationHelper.cancelReminder(getApplication(), reminder.id.toLong())
             NotificationHelper.scheduleReminder(getApplication(), reminder.id.toLong(), adjusted)
+            LaterGatorWidget.requestUpdate(getApplication())
         }
     }
 
@@ -75,7 +91,6 @@ class ReminderViewModel(
                 set(Calendar.MINUTE, end % 60)
                 set(Calendar.SECOND, 0)
                 set(Calendar.MILLISECOND, 0)
-                // Nächster Tagesanbruch falls Endzeit bereits verstrichen
                 if (timeInMillis <= triggerMs) add(Calendar.DAY_OF_YEAR, 1)
             }
             return reschedCal.timeInMillis

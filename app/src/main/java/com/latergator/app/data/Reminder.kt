@@ -11,5 +11,6 @@ data class Reminder(
     val description: String,
     val snoozeTargetTime: Long,
     val createdTime: Long = System.currentTimeMillis(),
-    val status: ReminderStatus = ReminderStatus.PENDING
+    val status: ReminderStatus = ReminderStatus.PENDING,
+    val placeType: String? = null
 )

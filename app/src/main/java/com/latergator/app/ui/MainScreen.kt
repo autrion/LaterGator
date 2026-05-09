@@ -13,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -23,17 +25,24 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     viewModel: ReminderViewModel,
     onNavigateToSettings: () -> Unit,
+    onNavigateToHistory: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var descriptionText by remember { mutableStateOf("") }
     var showGator by remember { mutableStateOf(false) }
     var editingReminder by remember { mutableStateOf<Reminder?>(null) }
     val pendingReminders by viewModel.pendingReminders.collectAsState()
+    val haptic = LocalHapticFeedback.current
+
+    // Custom time picker state
+    var showCustomDatePicker by remember { mutableStateOf(false) }
+    var showCustomTimePicker by remember { mutableStateOf(false) }
+    var customPickedDateMs by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(showGator) {
         if (showGator) { delay(2_200); showGator = false }
@@ -43,6 +52,7 @@ fun MainScreen(
         viewModel.saveReminder(descriptionText, targetTime)
         descriptionText = ""
         showGator = true
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
     }
 
     Column(
@@ -56,6 +66,7 @@ fun MainScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            IconButton(onClick = onNavigateToHistory) { Text("📋", fontSize = 20.sp) }
             Text(
                 text = "🐊 LaterGator",
                 style = MaterialTheme.typography.headlineMedium,
@@ -63,9 +74,7 @@ fun MainScreen(
                 modifier = Modifier.weight(1f),
                 textAlign = TextAlign.Center
             )
-            IconButton(onClick = onNavigateToSettings) {
-                Text("⚙️", fontSize = 22.sp)
-            }
+            IconButton(onClick = onNavigateToSettings) { Text("⚙️", fontSize = 22.sp) }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -112,6 +121,7 @@ fun MainScreen(
                     SnoozeButton("+Heute Abend", inputEnabled) { saveWith(ReminderViewModel.todayEvening()) }
                     SnoozeButton("+Morgen früh", inputEnabled) { saveWith(ReminderViewModel.tomorrowMorning()) }
                     SnoozeButton("+Nächste Woche", inputEnabled) { saveWith(ReminderViewModel.nextWeekMonday()) }
+                    SnoozeButton("+Eigene Zeit…", inputEnabled) { showCustomDatePicker = true }
                 }
             }
         }
@@ -167,6 +177,66 @@ fun MainScreen(
             onDismiss = { editingReminder = null }
         )
     }
+
+    // ── Custom Zeit-Picker ────────────────────────────────────────────
+    if (showCustomDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = System.currentTimeMillis()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showCustomDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    customPickedDateMs = datePickerState.selectedDateMillis
+                    showCustomDatePicker = false
+                    showCustomTimePicker = true
+                }) { Text("Weiter →") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomDatePicker = false }) { Text("Abbrechen") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    if (showCustomTimePicker) {
+        val now = Calendar.getInstance()
+        val timePickerState = rememberTimePickerState(
+            initialHour = now.get(Calendar.HOUR_OF_DAY),
+            initialMinute = now.get(Calendar.MINUTE),
+            is24Hour = true
+        )
+        AlertDialog(
+            onDismissRequest = { showCustomTimePicker = false },
+            title = { Text("Uhrzeit wählen") },
+            text = { TimePicker(state = timePickerState) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val dateMs = customPickedDateMs ?: System.currentTimeMillis()
+                    val utcCal = Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+                        timeInMillis = dateMs
+                    }
+                    val localCal = Calendar.getInstance().apply {
+                        set(
+                            utcCal.get(Calendar.YEAR),
+                            utcCal.get(Calendar.MONTH),
+                            utcCal.get(Calendar.DAY_OF_MONTH),
+                            timePickerState.hour,
+                            timePickerState.minute,
+                            0
+                        )
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    showCustomTimePicker = false
+                    if (descriptionText.isNotBlank()) saveWith(localCal.timeInMillis)
+                }) { Text("Speichern") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomTimePicker = false }) { Text("Abbrechen") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -217,11 +287,27 @@ private fun ReminderCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(reminder.description, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    formatter.format(Date(reminder.snoozeTargetTime)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        formatter.format(Date(reminder.snoozeTargetTime)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (reminder.placeType != null) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            tonalElevation = 0.dp
+                        ) {
+                            Text(
+                                reminder.placeType,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
             }
             IconButton(onClick = { onEdit(reminder) }) { Text("✏️", fontSize = 20.sp) }
             IconButton(onClick = { onSnooze2h(reminder) }) { Text("⏰", fontSize = 20.sp) }

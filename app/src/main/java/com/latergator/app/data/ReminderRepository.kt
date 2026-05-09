@@ -9,4 +9,5 @@ class ReminderRepository(private val dao: ReminderDao) {
     suspend fun update(reminder: Reminder) = dao.update(reminder)
     suspend fun updateStatus(id: Int, status: ReminderStatus) = dao.updateStatus(id, status)
     suspend fun getById(id: Int): Reminder? = dao.getById(id)
+    fun getHistoryReminders(): Flow<List<Reminder>> = dao.getHistoryReminders()
 }
