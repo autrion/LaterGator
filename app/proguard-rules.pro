@@ -1,0 +1,2 @@
+-keep class com.latergator.app.data.** { *; }
+-keepattributes *Annotation*

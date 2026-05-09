@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Gator body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M18,62 Q30,38 54,50 Q78,38 90,60 Q72,80 54,70 Q36,80 18,62Z" />
+    <!-- Gator eye -->
+    <ellipse
+        android:fillColor="#2E7D32"
+        android:cx="76"
+        android:cy="50"
+        android:rx="6"
+        android:ry="6" />
+    <!-- Clock circle -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#2E7D32"
+        android:strokeWidth="2"
+        android:pathData="M80,20 m-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0" />
+    <path
+        android:strokeColor="#2E7D32"
+        android:strokeWidth="2"
+        android:pathData="M80,15 L80,20 L84,23" />
+</vector>
