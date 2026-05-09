@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="launcher_background">#E8F5E9</color>
+    <string name="app_name">LaterGator</string>
+    <style name="Theme.LaterGator" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/launcher_background</item>
+    </style>
+</resources>

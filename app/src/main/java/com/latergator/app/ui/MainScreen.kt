@@ -23,17 +23,20 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun MainScreen(viewModel: ReminderViewModel, modifier: Modifier = Modifier) {
+fun MainScreen(
+    viewModel: ReminderViewModel,
+    onNavigateToSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     var descriptionText by remember { mutableStateOf("") }
     var showGator by remember { mutableStateOf(false) }
+    var editingReminder by remember { mutableStateOf<Reminder?>(null) }
     val pendingReminders by viewModel.pendingReminders.collectAsState()
 
     LaunchedEffect(showGator) {
-        if (showGator) {
-            delay(2_200)
-            showGator = false
-        }
+        if (showGator) { delay(2_200); showGator = false }
     }
 
     fun saveWith(targetTime: Long) {
@@ -46,18 +49,28 @@ fun MainScreen(viewModel: ReminderViewModel, modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp)
-            .padding(top = 24.dp, bottom = 8.dp)
+            .padding(top = 16.dp, bottom = 8.dp)
     ) {
-        Text(
-            text = "🐊 LaterGator",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.primary,
+        // ── Header ────────────────────────────────────────────────────
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center
-        )
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "🐊 LaterGator",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center
+            )
+            IconButton(onClick = onNavigateToSettings) {
+                Text("⚙️", fontSize = 22.sp)
+            }
+        }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
+        // ── Eingabe-Card ──────────────────────────────────────────────
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -80,67 +93,49 @@ fun MainScreen(viewModel: ReminderViewModel, modifier: Modifier = Modifier) {
                     shape = RoundedCornerShape(12.dp),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
-                        if (descriptionText.isNotBlank()) {
+                        if (descriptionText.isNotBlank())
                             saveWith(System.currentTimeMillis() + ReminderViewModel.TWO_HOURS_MS)
-                        }
                     })
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
 
                 val inputEnabled = descriptionText.isNotBlank()
-
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    SnoozeButton(
-                        label = "+2h",
-                        enabled = inputEnabled,
-                        isPrimary = true,
-                        onClick = { saveWith(System.currentTimeMillis() + ReminderViewModel.TWO_HOURS_MS) }
-                    )
-                    SnoozeButton(
-                        label = "+Heute Abend",
-                        enabled = inputEnabled,
-                        onClick = { saveWith(ReminderViewModel.todayEvening()) }
-                    )
-                    SnoozeButton(
-                        label = "+Morgen früh",
-                        enabled = inputEnabled,
-                        onClick = { saveWith(ReminderViewModel.tomorrowMorning()) }
-                    )
-                    SnoozeButton(
-                        label = "+Nächste Woche",
-                        enabled = inputEnabled,
-                        onClick = { saveWith(ReminderViewModel.nextWeekMonday()) }
-                    )
+                    SnoozeButton("+2h", inputEnabled, isPrimary = true) {
+                        saveWith(System.currentTimeMillis() + ReminderViewModel.TWO_HOURS_MS)
+                    }
+                    SnoozeButton("+Heute Abend", inputEnabled) { saveWith(ReminderViewModel.todayEvening()) }
+                    SnoozeButton("+Morgen früh", inputEnabled) { saveWith(ReminderViewModel.tomorrowMorning()) }
+                    SnoozeButton("+Nächste Woche", inputEnabled) { saveWith(ReminderViewModel.nextWeekMonday()) }
                 }
             }
         }
 
-        // Gator-Feedback nach dem Speichern
+        // ── Gator-Feedback ───────────────────────────────────────────
         AnimatedVisibility(
             visible = showGator,
             enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)) + fadeIn(),
             exit = scaleOut() + fadeOut()
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text("🐊", fontSize = 56.sp)
                 Text(
-                    text = "Hab's! Ich erinner dich!",
+                    "Hab's! Ich erinner dich!",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
             }
         }
 
+        // ── Offene Erinnerungen ──────────────────────────────────────
         if (!showGator && pendingReminders.isNotEmpty()) {
             Spacer(modifier = Modifier.height(16.dp))
             Text(
@@ -153,6 +148,7 @@ fun MainScreen(viewModel: ReminderViewModel, modifier: Modifier = Modifier) {
                 items(pendingReminders, key = { it.id }) { reminder ->
                     ReminderCard(
                         reminder = reminder,
+                        onEdit = { editingReminder = it },
                         onComplete = { viewModel.completeReminder(it) },
                         onSnooze2h = { viewModel.snoozeReminder(it, ReminderViewModel.TWO_HOURS_MS) }
                     )
@@ -160,14 +156,25 @@ fun MainScreen(viewModel: ReminderViewModel, modifier: Modifier = Modifier) {
             }
         }
     }
+
+    editingReminder?.let { reminder ->
+        EditReminderDialog(
+            reminder = reminder,
+            onSave = { desc, time ->
+                viewModel.updateReminder(reminder, desc, time)
+                editingReminder = null
+            },
+            onDismiss = { editingReminder = null }
+        )
+    }
 }
 
 @Composable
 private fun SnoozeButton(
     label: String,
     enabled: Boolean,
-    onClick: () -> Unit,
-    isPrimary: Boolean = false
+    isPrimary: Boolean = false,
+    onClick: () -> Unit
 ) {
     Button(
         onClick = onClick,
@@ -185,23 +192,18 @@ private fun SnoozeButton(
             ),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = if (enabled) MaterialTheme.colorScheme.onPrimary
-                    else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f)
-        )
+        Text(label, style = MaterialTheme.typography.labelMedium)
     }
 }
 
 @Composable
 private fun ReminderCard(
     reminder: Reminder,
+    onEdit: (Reminder) -> Unit,
     onComplete: (Reminder) -> Unit,
     onSnooze2h: (Reminder) -> Unit
 ) {
     val formatter = remember { SimpleDateFormat("EEE, dd.MM. · HH:mm 'Uhr'", Locale.GERMAN) }
-
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
@@ -209,32 +211,21 @@ private fun ReminderCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = reminder.description,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium
-                )
+                Text(reminder.description, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = formatter.format(Date(reminder.snoozeTargetTime)),
+                    formatter.format(Date(reminder.snoozeTargetTime)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Row {
-                IconButton(onClick = { onSnooze2h(reminder) }) {
-                    Text("⏰", fontSize = 22.sp)
-                }
-                IconButton(onClick = { onComplete(reminder) }) {
-                    Text("✅", fontSize = 22.sp)
-                }
-            }
+            IconButton(onClick = { onEdit(reminder) }) { Text("✏️", fontSize = 20.sp) }
+            IconButton(onClick = { onSnooze2h(reminder) }) { Text("⏰", fontSize = 20.sp) }
+            IconButton(onClick = { onComplete(reminder) }) { Text("✅", fontSize = 20.sp) }
         }
     }
 }

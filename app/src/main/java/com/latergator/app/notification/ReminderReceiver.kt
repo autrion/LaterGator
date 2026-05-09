@@ -4,12 +4,17 @@ import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.latergator.app.LaterGatorApp
+import com.latergator.app.data.Reminder
 import com.latergator.app.data.ReminderDatabase
 import com.latergator.app.data.ReminderRepository
 import com.latergator.app.data.ReminderStatus
+import com.latergator.app.ui.ReminderViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class ReminderReceiver : BroadcastReceiver() {
 
@@ -39,7 +44,6 @@ class ReminderReceiver : BroadcastReceiver() {
             }
 
             else -> {
-                // Alarm ausgelöst → Benachrichtigung anzeigen
                 CoroutineScope(Dispatchers.IO).launch {
                     val reminder = repo.getById(reminderId.toInt()) ?: return@launch
                     if (reminder.status == ReminderStatus.PENDING) {
@@ -65,15 +69,16 @@ class ReminderReceiver : BroadcastReceiver() {
     ) {
         val description = intent.getStringExtra(NotificationHelper.EXTRA_DESCRIPTION) ?: ""
         CoroutineScope(Dispatchers.IO).launch {
+            val settings = runBlocking {
+                (context.applicationContext as LaterGatorApp).settingsRepository.settingsFlow.first()
+            }
+            val rawTime = System.currentTimeMillis() + delayMs
+            val adjustedTime = ReminderViewModel.applyQuietHours(rawTime, settings)
             val original = repo.getById(originalId.toInt())
-            val newTime = System.currentTimeMillis() + delayMs
-            val newReminder = original?.copy(id = 0, snoozeTargetTime = newTime, status = ReminderStatus.PENDING)
-                ?: com.latergator.app.data.Reminder(
-                    description = description,
-                    snoozeTargetTime = newTime
-                )
+            val newReminder = original?.copy(id = 0, snoozeTargetTime = adjustedTime, status = ReminderStatus.PENDING)
+                ?: Reminder(description = description, snoozeTargetTime = adjustedTime)
             val newId = repo.insert(newReminder)
-            NotificationHelper.scheduleReminder(context, newId, newTime)
+            NotificationHelper.scheduleReminder(context, newId, adjustedTime)
             repo.updateStatus(originalId.toInt(), ReminderStatus.IGNORED)
         }
     }
