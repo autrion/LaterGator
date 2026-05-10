@@ -6,12 +6,6 @@ Eine minimalistische Android-App für Menschen mit ADHS, die kurze Aufgaben sofo
 
 ---
 
-## Screenshots
-
-*Coming soon — App in Entwicklung*
-
----
-
 ## Features
 
 - **Sofort-Eingabe** — ein Textfeld, keine Menüs, keine Ablenkung
@@ -20,10 +14,18 @@ Eine minimalistische Android-App für Menschen mit ADHS, die kurze Aufgaben sofo
   - `+Heute Abend` — 19:00 Uhr
   - `+Morgen früh` — 08:00 Uhr
   - `+Nächste Woche` — Montag, 09:00 Uhr
+  - `+Eigene Zeit…` — Datum- und Uhrzeitpicker
+- **Haptisches Feedback** — kurzes Vibrieren beim Speichern
+- **Erinnerungen bearbeiten** — Beschreibung und Zeit nachträglich ändern
 - **Sofortiges Feedback** — 🐊-Animation nach dem Speichern
 - **Notification-Aktionen** — direkt aus der Benachrichtigung: Erledigt / +10 Min / +2 Std
 - **Auto-Resnooze** — wird eine Benachrichtigung weggewischt, kommt sie nach 2h automatisch wieder
 - **Gerätestart** — alle offenen Erinnerungen werden nach einem Neustart neu geplant
+- **Dark Mode** — System / Hell / Dunkel / Zeitplan (automatisch nach Uhrzeit)
+- **Ruhemodus** — keine Benachrichtigungen in konfigurierbaren Nacht-Stunden
+- **Verlauf** — erledigte und verpasste Erinnerungen einsehen
+- **Homescreen-Widget** — zeigt Anzahl offener Erinnerungen + nächste fällige
+- **Orts-Tags** — erkennt automatisch Schlüsselwörter (Supermarkt, Apotheke, Baumarkt …) und markiert Erinnerungen mit einem Tag
 
 ---
 
@@ -35,7 +37,9 @@ Eine minimalistische Android-App für Menschen mit ADHS, die kurze Aufgaben sofo
 | UI | Jetpack Compose + Material3 |
 | Architektur | MVVM |
 | Datenbank | Room 2.6.1 |
+| Einstellungen | DataStore Preferences |
 | Benachrichtigungen | AlarmManager (`setExactAndAllowWhileIdle`) |
+| Widget | AppWidgetProvider + RemoteViews |
 | Min SDK | 26 (Android 8.0) |
 | Target SDK | 34 (Android 14) |
 
@@ -49,26 +53,39 @@ WorkManager kann bei aktivem Energiesparmodus verzögert werden. Für ADHS-Nutze
 ```
 app/src/main/
 ├── java/com/latergator/app/
-│   ├── LaterGatorApp.kt          # Application-Klasse, Notification-Channel
-│   ├── MainActivity.kt           # Entry-Point, Permission-Handling
+│   ├── LaterGatorApp.kt              # Application-Klasse, Notification-Channel
+│   ├── MainActivity.kt               # Entry-Point, Screen-Navigation, Permission-Handling
 │   ├── data/
-│   │   ├── Reminder.kt           # Entity + ReminderStatus Enum
-│   │   ├── ReminderDao.kt        # Room DAO
-│   │   ├── ReminderDatabase.kt   # Room Database (Singleton)
-│   │   └── ReminderRepository.kt # Single Source of Truth
+│   │   ├── Reminder.kt               # Entity + ReminderStatus Enum + placeType
+│   │   ├── ReminderDao.kt            # Room DAO
+│   │   ├── ReminderDatabase.kt       # Room Database (Singleton, Migrations)
+│   │   ├── ReminderRepository.kt     # Single Source of Truth
+│   │   ├── AppSettingsRepository.kt  # DataStore Preferences (Dark Mode, Ruhemodus)
+│   │   └── PlaceTypeDetector.kt      # Keyword-basierte Orts-Erkennung
 │   ├── ui/
-│   │   ├── MainScreen.kt         # Compose UI
-│   │   ├── ReminderViewModel.kt  # Business Logic, Zeit-Berechnung
+│   │   ├── MainScreen.kt             # Hauptscreen mit Eingabe + Erinnerungsliste
+│   │   ├── HistoryScreen.kt          # Verlauf (erledigt / verpasst)
+│   │   ├── SettingsScreen.kt         # Dark Mode + Ruhemodus-Einstellungen
+│   │   ├── EditReminderDialog.kt     # Erinnerung bearbeiten
+│   │   ├── TimeOnlyPickerDialog.kt   # Uhrzeit-Picker
+│   │   ├── ReminderViewModel.kt      # Business Logic, Zeit-Berechnung
 │   │   ├── ReminderViewModelFactory.kt
-│   │   └── theme/                # Color, Type, Theme (Gator-Grün)
-│   └── notification/
-│       ├── NotificationHelper.kt # AlarmManager, Notification-Builder
-│       ├── ReminderReceiver.kt   # BroadcastReceiver für Alarme & Aktionen
-│       └── BootReceiver.kt       # Alarme nach Gerätestart neu planen
+│   │   ├── SettingsViewModel.kt
+│   │   ├── SettingsViewModelFactory.kt
+│   │   └── theme/                    # Color, Type, Theme (Gator-Grün + Dark)
+│   ├── notification/
+│   │   ├── NotificationHelper.kt     # AlarmManager, Notification-Builder
+│   │   ├── ReminderReceiver.kt       # BroadcastReceiver für Alarme & Aktionen
+│   │   └── BootReceiver.kt           # Alarme nach Gerätestart neu planen
+│   └── widget/
+│       └── LaterGatorWidget.kt       # Homescreen-Widget (AppWidgetProvider)
 └── res/
-    ├── drawable/                 # Launcher-Icon (Vektor), Notification-Icon
-    ├── mipmap-anydpi-v26/        # Adaptive Icons
-    └── values/                   # strings, colors, themes
+    ├── drawable/                     # Launcher-Icon, Widget-Hintergrund
+    ├── layout/                       # Widget-Layout (RemoteViews)
+    ├── mipmap-anydpi-v26/            # Adaptive Icons
+    ├── mipmap-{mdpi…xxxhdpi}/        # Legacy Icon-PNGs
+    ├── xml/                          # Widget-Metadaten
+    └── values/                       # strings, colors, themes
 ```
 
 ---
@@ -95,6 +112,9 @@ gradle wrapper --gradle-version=8.9
 
 # Debug-APK bauen
 ./gradlew assembleDebug
+
+# Direkt auf angeschlossenem Gerät installieren
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ### Berechtigungen
@@ -111,21 +131,11 @@ Die App fragt beim ersten Start folgende Berechtigungen an:
 ## Designprinzipien (ADHS-spezifisch)
 
 1. **Immediate Feedback** — die 🐊-Animation nach dem Speichern bestätigt die Aktion sofort und reduziert Unsicherheit
-2. **No Distractions** — keine Navigationsleiste, keine Tabs, ein einziger Screen
+2. **No Distractions** — keine Navigationsleiste, keine Tabs, minimale UI
 3. **Relative Zeitangaben** — `+2h` statt `14:35 Uhr`, weil ADHS-Hirne relative Zeit besser verarbeiten
-4. **Niedrige Hürde** — Text eintippen + einen Button drücken = fertig. Kein Datum-Picker, kein Menü
+4. **Niedrige Hürde** — Text eintippen + einen Button drücken = fertig
 5. **Fehlertoleranz** — weggewischte Notification? Kommt automatisch nach 2h wieder
-
----
-
-## Roadmap
-
-- [ ] Widget für den Homescreen
-- [ ] Eigene Snooze-Zeiten (Custom Input)
-- [ ] Erinnerungs-Verlauf (Completed/Ignored anzeigen)
-- [ ] Dark Mode
-- [ ] Haptisches Feedback beim Speichern
-- [ ] Wear OS Companion
+6. **Haptisches Feedback** — physische Bestätigung beim Speichern reduziert Zweifel
 
 ---
 
